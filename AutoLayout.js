@@ -2,27 +2,36 @@ var BpmnModdle = require('bpmn-moddle'),
   DiFactory = require('./DiFactory'),
   assign = require('lodash/object/assign'),
   saveSync = require('save-file/sync');
-
 var emptyDi = '<bpmndi:BPMNDiagram id="BPMNDiagram_1">' +
   '<bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">' +
   '</bpmndi:BPMNPlane>' +
   '</bpmndi:BPMNDiagram>' +
   '</bpmn:definitions>';
-
 var STDDIST = 50;
 
 function AutoLayout() {
   this.moddle = new BpmnModdle();
   this.DiFactory = new DiFactory(this.moddle);
 }
-
 module.exports = AutoLayout;
-
 AutoLayout.prototype.layoutProcess = function (xmlStr) {
   var self = this;
   var moddle = this.moddle;
+  var tempmoddle = this.moddle;
   // create empty di section
   xmlStr = xmlStr.replace('</bpmn:definitions>', emptyDi);
+
+  tempmoddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
+    var root = moddleWithoutDi.get('rootElements')[0];
+    var rootDi = moddleWithoutDi.get('diagrams')[0].get('plane');
+    // create di
+    maximaly = 0;
+    maxsuby = 0;
+    subprocessanchors = new Map();
+    self._breadFirstSearch(root, rootDi);
+    maprdy = true;
+  });
+
   moddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
     var root = moddleWithoutDi.get('rootElements')[0];
     var rootDi = moddleWithoutDi.get('diagrams')[0].get('plane');
@@ -33,8 +42,8 @@ AutoLayout.prototype.layoutProcess = function (xmlStr) {
     });
   });
 };
-
 AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) {
+
   var children = parentFlowElement.flowElements;
   var aStartEvent = getStartEvent(children);
   // groups are elements with the same distance
@@ -43,7 +52,7 @@ AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) 
     connections: [],
     anchor: {
       x: 100,
-      y: 600 + 36 / 2
+      y: maximaly + 36 / 2
     },
     distance: 0
   };
@@ -79,56 +88,12 @@ AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) 
       }
       // do if subprocess found
       if (elementOrConnection.flowElements) {
-        var aSubprocessFlowElements = elementOrConnection.flowElements.slice();
-        if (aSubprocessFlowElements.length > 0) {
-          var aStartEvent_sub = getStartEvent(aSubprocessFlowElements);
-          aStartEvent_sub.marked = true;
-          aStartEvent_sub.dist = 0;
-          var subProcessGroup = {
-            elements: [],
-            connections: [],
-            anchor: {
-              x: 100,
-              y: 600 + 36 / 2
-            },
-            distance: 0
-          };
-          // queue holds visited sub process elements
-          var subProcessQueue = [aStartEvent_sub];
-          var subProcessElementOrConnection,
-            subProcessOutgoings;
-          while (subProcessQueue.length !== 0) {
-            // get first
-            subProcessElementOrConnection = subProcessQueue.shift();
-            // insert element into group
-            subProcessGroup = this._groupElement(subProcessElementOrConnection, subProcessGroup, parentDi);
-            // only if source is an element
-            subProcessOutgoings = getOutgoingConnection(subProcessElementOrConnection, aSubprocessFlowElements);
-            if (subProcessOutgoings.length) {
-              subProcessOutgoings.forEach(function (subProcessConnection) {
-                // for layouting the connection
-                if (!subProcessConnection.marked) {
-                  subProcessConnection.marked = true;
-                  subProcessConnection.dist = subProcessElementOrConnection.dist + 1;
-                  subProcessQueue.push(subProcessConnection);
-                }
-                var subProcessTarget = subProcessConnection.get('targetRef');
-                if (!subProcessTarget.marked) {
-                  subProcessTarget.marked = true;
-                  subProcessTarget.dist = subProcessElementOrConnection.dist + 1;
-                  subProcessQueue.push(subProcessTarget);
-                }
-              });
-            }
-          }
-          this._layoutGroup(subProcessGroup, parentDi);
-        }
+        handleLayoutingSubprocesses(elementOrConnection.flowElements, parentDi, this);
       }
     }
   }
   this._layoutGroup(group, parentDi);
 };
-
 AutoLayout.prototype._groupElement = function (elementOrConnection, group, parentDi) {
   if (elementOrConnection.dist === group.distance) {
     if (elementOrConnection.$type === 'bpmn:SequenceFlow') {
@@ -147,7 +112,6 @@ AutoLayout.prototype._groupElement = function (elementOrConnection, group, paren
   }
   return group;
 };
-
 AutoLayout.prototype._layoutGroup = function (group, parentDi) {
   var newAnchor = this._layoutElements(group, parentDi);
   var connections = group.connections;
@@ -156,7 +120,9 @@ AutoLayout.prototype._layoutGroup = function (group, parentDi) {
 };
 
 AutoLayout.prototype._layoutElements = function (group, parentDi) {
+
   var createDi = this.DiFactory.createBpmnElementDi.bind(this.DiFactory);
+
   var getDefaultSize = this.DiFactory._getDefaultSize.bind(this.DiFactory);
   var elements = group.elements,
     anchor = group.anchor;
@@ -190,16 +156,26 @@ AutoLayout.prototype._layoutElements = function (group, parentDi) {
         pos.y = bottom;
       }
     }
+
+    if (maximaly < Math.abs(pos.y) && !anchor.issubanchor) {
+      maximaly = Math.abs(pos.y);
+    }
     element.bounds = assign({}, pos, size);
     elementDi = createDi('shape', element, pos);
     childrenDi.push(elementDi);
   });
+
+  if ((typeof submaxy != "undefined") && submaxy < Math.abs(pos.y) && anchor.issubanchor) {
+    submaxy = Math.abs(pos.y);
+    subprocessanchors.set(group.anchor.start, submaxy);
+  }
   return {
     x: anchor.x + maxWidth + 2 * STDDIST,
-    y: anchor.y
+    y: anchor.y,
+    issubanchor: anchor.issubanchor,
+    start: anchor.start
   };
 };
-
 AutoLayout.prototype._layoutConnections = function (connections, parentDi) {
   var createDi = this.DiFactory.createBpmnElementDi.bind(this.DiFactory);
   var childrenDi = parentDi.get('planeElement');
@@ -209,7 +185,6 @@ AutoLayout.prototype._layoutConnections = function (connections, parentDi) {
   });
 };
 /////// helpers //////////////////////////////////
-
 function getStartEvent(flowElements) {
   return flowElements.filter(function (e) {
     return e.$type === 'bpmn:StartEvent';
@@ -218,6 +193,68 @@ function getStartEvent(flowElements) {
 
 function getOutgoingConnection(source, flowElements) {
   return flowElements.filter(function (e) {
+    // console.log(e.$type === 'bpmn:SequenceFlow' && e.get('sourceRef').id === source.id);
+
     return e.$type === 'bpmn:SequenceFlow' && e.get('sourceRef').id === source.id;
   });
+}
+
+function handleLayoutingSubprocesses(flowElements, parentDi, dis) {
+  submaxy = 0;
+  var aSubprocessFlowElements = flowElements.slice();
+  if (aSubprocessFlowElements.length > 0) {
+    var aStartEvent_sub = getStartEvent(aSubprocessFlowElements);
+    aStartEvent_sub.marked = true;
+    aStartEvent_sub.dist = 0;
+    maxsuby = subprocessanchors.get(aStartEvent_sub.id);
+    var finaly;
+    if (typeof maprdy !== "undefined") {
+      finaly = maxsuby;
+    } else {
+      finaly = 0;
+    }
+    var subProcessGroup = {
+      elements: [],
+      connections: [],
+      anchor: {
+        x: 100,
+        y: finaly + 36 / 2,
+        issubanchor: true,
+        start: aStartEvent_sub.id
+      },
+      distance: 0,
+    };
+    // queue holds visited sub process elements
+    var subProcessQueue = [aStartEvent_sub];
+    var subProcessElementOrConnection,
+      subProcessOutgoings;
+    while (subProcessQueue.length !== 0) {
+      // get first
+      subProcessElementOrConnection = subProcessQueue.shift();
+      // insert element into group
+      subProcessGroup = dis._groupElement(subProcessElementOrConnection, subProcessGroup, parentDi);
+      // only if source is an element
+      subProcessOutgoings = getOutgoingConnection(subProcessElementOrConnection, aSubprocessFlowElements);
+      if (subProcessOutgoings.length) {
+        subProcessOutgoings.forEach(function (subProcessConnection) {
+          // for layouting the connection
+          if (!subProcessConnection.marked) {
+            subProcessConnection.marked = true;
+            subProcessConnection.dist = subProcessElementOrConnection.dist + 1;
+            subProcessQueue.push(subProcessConnection);
+          }
+          var subProcessTarget = subProcessConnection.get('targetRef');
+          if (!subProcessTarget.marked) {
+            subProcessTarget.marked = true;
+            subProcessTarget.dist = subProcessElementOrConnection.dist + 1;
+            subProcessQueue.push(subProcessTarget);
+          }
+        });
+        if (subProcessElementOrConnection.flowElements) {
+          handleLayoutingSubprocesses(subProcessElementOrConnection.flowElements, parentDi, dis);
+        }
+      }
+    }
+    dis._layoutGroup(subProcessGroup, parentDi);
+  }
 }

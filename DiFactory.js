@@ -103,7 +103,9 @@ DiFactory.prototype.createBpmnElementDi = function(elementType, attrs, pos) {
       id: '_BPMNConnection_' + connection.id
     });
   } else {
-    var size = this._getDefaultSize(attrs.$type);
+    // var size = this._getDefaultSize(attrs.$type);
+    var size = (attrs.bounds);
+
     var bounds = assign({}, pos, size);
 
     businessObject = this.create(attrs.$type, attrs);

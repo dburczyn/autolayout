@@ -8,30 +8,31 @@ var emptyDi = '<bpmndi:BPMNDiagram id="BPMNDiagram_1">' +
   '</bpmndi:BPMNDiagram>' +
   '</bpmn:definitions>';
 var STDDIST = 50;
-
+var padding = 10;
 function AutoLayout() {
   this.moddle = new BpmnModdle();
   this.DiFactory = new DiFactory(this.moddle);
 }
 module.exports = AutoLayout;
 AutoLayout.prototype.layoutProcess = function (xmlStr) {
-  var self = this;
+  self = this;
   var moddle = this.moddle;
   var tempmoddle = this.moddle;
   // create empty di section
   xmlStr = xmlStr.replace('</bpmn:definitions>', emptyDi);
-
   tempmoddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
     var root = moddleWithoutDi.get('rootElements')[0];
     var rootDi = moddleWithoutDi.get('diagrams')[0].get('plane');
     // create di
     maximaly = 0;
     maxsuby = 0;
+    maximalx = 0;
     subprocessanchors = new Map();
+    laneMap = new Map();
+    maxYmap = new Map();
     self._breadFirstSearch(root, rootDi);
     maprdy = true;
   });
-
   moddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
     var root = moddleWithoutDi.get('rootElements')[0];
     var rootDi = moddleWithoutDi.get('diagrams')[0].get('plane');
@@ -43,16 +44,67 @@ AutoLayout.prototype.layoutProcess = function (xmlStr) {
   });
 };
 AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) {
-
+  var laneHeightMap = new Map();
+  var movePaddingMap = new Map();
+  if (typeof maprdy !== "undefined" && typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
+    parentFlowElement.laneSets[0].lanes.forEach(function (lane) {
+      var groupElementsYCoordinates = [];
+      lane.get('flowNodeRef').forEach(function (ref) {
+        if (typeof maxYmap.get(ref.id) !== 'undefined') {
+          groupElementsYCoordinates.push(maxYmap.get(ref.id));
+        }
+      });
+      var tempmin = Math.min(...groupElementsYCoordinates);
+      var tempmax = Math.max(...groupElementsYCoordinates);
+      var tempabs = Math.abs(tempmin - tempmax);
+      var movepadding = Math.abs(Math.min.apply(null, groupElementsYCoordinates));
+      laneHeightMap.set(lane.id, tempabs);
+      if (!Number.isNaN(movepadding)) {
+        movePaddingMap.set(lane.id, movepadding);
+      } else {
+        movePaddingMap.set(lane.id, 0);
+      }
+    });
+  }
+  var pos = {
+    x: 0,
+    y: 0,
+  };
+  if (typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
+    parentFlowElement.laneSets[0].lanes.forEach(function (lane) {
+      lane.get('flowNodeRef').forEach(function (ref) {
+        ref.laneanchor = pos.y;
+        ref.offset = movePaddingMap.get(lane.id);
+      });
+      laneMap.set(lane.name, lane.id);
+      var createDi = self.DiFactory.createBpmnElementDi.bind(self.DiFactory);
+      var getDefaultSize = self.DiFactory._getDefaultSize.bind(self.DiFactory);
+      var childrenDi = parentDi.get('planeElement'),
+        elementDi;
+      size = getDefaultSize(lane.$type);
+      size.width = maximalx + 2 * STDDIST;
+      size.height = laneHeightMap.get(lane.id) + 80 + 2 * padding; // 80 = max height of object eg. Task
+      lane.bounds = assign({}, pos, size);
+      elementDi = createDi('shape', lane, pos);
+      childrenDi.push(elementDi);
+      pos.y = pos.y + laneHeightMap.get(lane.id) + 80 + 2 * padding; // 80 = max height of object eg. Task
+    });
+  }
   var children = parentFlowElement.flowElements;
   var aStartEvent = getStartEvent(children);
   // groups are elements with the same distance
+  var startingY = 0;
+  if (typeof parentFlowElement.laneSets[0].lanes === 'undefined' && typeof maprdy !== 'undefined') {
+    if (!Number.isNaN(Math.abs(Math.min(...maxYmap.values())))) {
+      startingY = Math.abs(Math.min(...maxYmap.values()));
+    }
+  }
   var group = {
     elements: [],
     connections: [],
     anchor: {
       x: 100,
-      y: maximaly + 36 / 2
+      y: startingY
     },
     distance: 0
   };
@@ -118,11 +170,8 @@ AutoLayout.prototype._layoutGroup = function (group, parentDi) {
   this._layoutConnections(connections, parentDi);
   return newAnchor;
 };
-
 AutoLayout.prototype._layoutElements = function (group, parentDi) {
-
   var createDi = this.DiFactory.createBpmnElementDi.bind(this.DiFactory);
-
   var getDefaultSize = this.DiFactory._getDefaultSize.bind(this.DiFactory);
   var elements = group.elements,
     anchor = group.anchor;
@@ -156,19 +205,26 @@ AutoLayout.prototype._layoutElements = function (group, parentDi) {
         pos.y = bottom;
       }
     }
-
     if (maximaly < Math.abs(pos.y) && !anchor.issubanchor) {
       maximaly = Math.abs(pos.y);
+    }
+    // set maximal y coordinate of line group elements
+    if (typeof maxYmap.get(element.id) === 'undefined') {
+      maxYmap.set(element.id, pos.y);
+    }
+    // move elements if they are elements of a line
+    if (typeof element.laneanchor !== 'undefined' && !anchor.issubanchor) {
+      pos.y = pos.y + element.laneanchor + element.offset + padding;
     }
     element.bounds = assign({}, pos, size);
     elementDi = createDi('shape', element, pos);
     childrenDi.push(elementDi);
+    if ((typeof submaxy != "undefined") && submaxy < Math.abs(pos.y) && anchor.issubanchor) {
+      submaxy = Math.abs(pos.y);
+      subprocessanchors.set(group.anchor.start, submaxy);
+    }
   });
-
-  if ((typeof submaxy != "undefined") && submaxy < Math.abs(pos.y) && anchor.issubanchor) {
-    submaxy = Math.abs(pos.y);
-    subprocessanchors.set(group.anchor.start, submaxy);
-  }
+  maximalx = pos.x;
   return {
     x: anchor.x + maxWidth + 2 * STDDIST,
     y: anchor.y,
@@ -190,15 +246,11 @@ function getStartEvent(flowElements) {
     return e.$type === 'bpmn:StartEvent';
   })[0];
 }
-
 function getOutgoingConnection(source, flowElements) {
   return flowElements.filter(function (e) {
-    // console.log(e.$type === 'bpmn:SequenceFlow' && e.get('sourceRef').id === source.id);
-
     return e.$type === 'bpmn:SequenceFlow' && e.get('sourceRef').id === source.id;
   });
 }
-
 function handleLayoutingSubprocesses(flowElements, parentDi, dis) {
   submaxy = 0;
   var aSubprocessFlowElements = flowElements.slice();
@@ -218,7 +270,7 @@ function handleLayoutingSubprocesses(flowElements, parentDi, dis) {
       connections: [],
       anchor: {
         x: 100,
-        y: finaly + 36 / 2,
+        y: finaly,
         issubanchor: true,
         start: aStartEvent_sub.id
       },

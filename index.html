@@ -1,31 +1,23 @@
-<!--
-
-<!DOCTYPE html>
-<html lang="en">
-  <head></head>
-  <body>
-    <form action="/upload" enctype="multipart/form-data" method="post">
-      <input type="file" name="filename">
-      <input type="submit" value="Upload">
-    </form>
-
-    <a href="/download">Download</a>
-
-  </body>
-</html> -->
-
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Upload Example</title>
+    <title>BPMNDI processor</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="index.js"></script>
+    <link rel="stylesheet" type="text/css" href="bpmndi_css.css">
 </head>
 <body>
-<form action="/" enctype="multipart/form-data" method="post">
-    <input type="file" name="upload" multiple>
-    <input type="submit" value="Upload">
+        <div class="inner">
+        <img  src="product_logo.png">
+    </div>
+    <h1 style="text-align:center">BPMN DI proccessor</h1>
+        <div id="parent">
+    <form id="form_upload" action="/upload" enctype="multipart/form-data" method="post">
+    <input type="file" name="upload" id="upload" accept=".xml,.bpmn" />
+    </br>
+    </br>
+    <input type="submit" value="Process" disabled class='uploadbutton' >
+    </div>
 </form>
-<a href="/process">Process</a>
-<a href="/download">Download</a>
 </body>
 </html>

@@ -9,15 +9,17 @@ var emptyDi = '<bpmndi:BPMNDiagram id="BPMNDiagram_1">' +
   '</bpmn:definitions>';
 var STDDIST = 50;
 var padding = 10;
+
 function AutoLayout() {
   this.moddle = new BpmnModdle();
   this.DiFactory = new DiFactory(this.moddle);
 }
 module.exports = AutoLayout;
-AutoLayout.prototype.layoutProcess = function (xmlStr) {
+AutoLayout.prototype.layoutProcess = function (xmlStr, callback) {
   self = this;
   var moddle = this.moddle;
   var tempmoddle = this.moddle;
+
   // create empty di section
   xmlStr = xmlStr.replace('</bpmn:definitions>', emptyDi);
   tempmoddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
@@ -30,23 +32,33 @@ AutoLayout.prototype.layoutProcess = function (xmlStr) {
     subprocessanchors = new Map();
     laneMap = new Map();
     maxYmap = new Map();
-    self._breadFirstSearch(root, rootDi);
+    try {
+      self._breadFirstSearch(root, rootDi);
+    } catch (e) {
+      callback("error preprocess");
+    }
     maprdy = true;
   });
   moddle.fromXML(xmlStr, function (err, moddleWithoutDi) {
     var root = moddleWithoutDi.get('rootElements')[0];
     var rootDi = moddleWithoutDi.get('diagrams')[0].get('plane');
     // create di
-    self._breadFirstSearch(root, rootDi);
+    try {
+      self._breadFirstSearch(root, rootDi);
+    } catch (e) {
+      callback("error");
+    }
+    maprdy = false;
     moddle.toXML(moddleWithoutDi, function (err, xmlWithDi) {
       saveSync(xmlWithDi, 'auto_layouted_bpmn_di.xml');
+      callback(true);
     });
   });
 };
 AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) {
   var laneHeightMap = new Map();
   var movePaddingMap = new Map();
-  if (typeof maprdy !== "undefined" && typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
+  if (typeof parentFlowElement.laneSets !== 'undefined' && typeof maprdy !== 'undefined' && maprdy == true && typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
     parentFlowElement.laneSets[0].lanes.forEach(function (lane) {
       var groupElementsYCoordinates = [];
       lane.get('flowNodeRef').forEach(function (ref) {
@@ -70,7 +82,7 @@ AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) 
     x: 0,
     y: 0,
   };
-  if (typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
+  if (typeof parentFlowElement.laneSets !== 'undefined' && typeof parentFlowElement.laneSets[0].lanes !== 'undefined') {
     parentFlowElement.laneSets[0].lanes.forEach(function (lane) {
       lane.get('flowNodeRef').forEach(function (ref) {
         ref.laneanchor = pos.y;
@@ -84,9 +96,12 @@ AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) 
       size = getDefaultSize(lane.$type);
       size.width = maximalx + 2 * STDDIST;
       size.height = laneHeightMap.get(lane.id) + 80 + 2 * padding; // 80 = max height of object eg. Task
-      lane.bounds = assign({}, pos, size);
-      elementDi = createDi('shape', lane, pos);
-      childrenDi.push(elementDi);
+
+      if (typeof maprdy !== 'undefined' && maprdy == true) {
+        lane.bounds = assign({}, pos, size);
+        elementDi = createDi('shape', lane, pos);
+        childrenDi.push(elementDi);
+      }
       pos.y = pos.y + laneHeightMap.get(lane.id) + 80 + 2 * padding; // 80 = max height of object eg. Task
     });
   }
@@ -94,7 +109,7 @@ AutoLayout.prototype._breadFirstSearch = function (parentFlowElement, parentDi) 
   var aStartEvent = getStartEvent(children);
   // groups are elements with the same distance
   var startingY = 0;
-  if (typeof parentFlowElement.laneSets[0].lanes === 'undefined' && typeof maprdy !== 'undefined') {
+  if (typeof parentFlowElement.laneSets !== 'undefined' && typeof parentFlowElement.laneSets[0].lanes === 'undefined' && typeof maprdy !== 'undefined' && maprdy == true) {
     if (!Number.isNaN(Math.abs(Math.min(...maxYmap.values())))) {
       startingY = Math.abs(Math.min(...maxYmap.values()));
     }
@@ -171,6 +186,7 @@ AutoLayout.prototype._layoutGroup = function (group, parentDi) {
   return newAnchor;
 };
 AutoLayout.prototype._layoutElements = function (group, parentDi) {
+
   var createDi = this.DiFactory.createBpmnElementDi.bind(this.DiFactory);
   var getDefaultSize = this.DiFactory._getDefaultSize.bind(this.DiFactory);
   var elements = group.elements,
@@ -231,6 +247,7 @@ AutoLayout.prototype._layoutElements = function (group, parentDi) {
     issubanchor: anchor.issubanchor,
     start: anchor.start
   };
+
 };
 AutoLayout.prototype._layoutConnections = function (connections, parentDi) {
   var createDi = this.DiFactory.createBpmnElementDi.bind(this.DiFactory);
@@ -246,11 +263,13 @@ function getStartEvent(flowElements) {
     return e.$type === 'bpmn:StartEvent';
   })[0];
 }
+
 function getOutgoingConnection(source, flowElements) {
   return flowElements.filter(function (e) {
     return e.$type === 'bpmn:SequenceFlow' && e.get('sourceRef').id === source.id;
   });
 }
+
 function handleLayoutingSubprocesses(flowElements, parentDi, dis) {
   submaxy = 0;
   var aSubprocessFlowElements = flowElements.slice();
@@ -260,7 +279,7 @@ function handleLayoutingSubprocesses(flowElements, parentDi, dis) {
     aStartEvent_sub.dist = 0;
     maxsuby = subprocessanchors.get(aStartEvent_sub.id);
     var finaly;
-    if (typeof maprdy !== "undefined") {
+    if (typeof maprdy !== 'undefined' && maprdy == true) {
       finaly = maxsuby;
     } else {
       finaly = 0;

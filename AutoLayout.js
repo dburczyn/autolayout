@@ -15,7 +15,7 @@ function AutoLayout() {
   this.DiFactory = new DiFactory(this.moddle);
 }
 module.exports = AutoLayout;
-AutoLayout.prototype.layoutProcess = function (xmlStr, callback) {
+AutoLayout.prototype.layoutProcess = function (xmlStr,uniqueFileName, callback) {
   self = this;
   var moddle = this.moddle;
   var tempmoddle = this.moddle;
@@ -50,7 +50,7 @@ AutoLayout.prototype.layoutProcess = function (xmlStr, callback) {
     }
     maprdy = false;
     moddle.toXML(moddleWithoutDi, function (err, xmlWithDi) {
-      saveSync(xmlWithDi, 'auto_layouted_bpmn_di.xml');
+      saveSync(xmlWithDi, 'auto_layouted_bpmn_di_'+uniqueFileName+'.xml',nconf.get('bpmndi_filestorage'));
       callback(true);
     });
   });

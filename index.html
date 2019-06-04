@@ -3,21 +3,23 @@
 <head>
     <title>BPMNDI processor</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="http://malsup.github.com/jquery.form.js"></script>
     <script src="index.js"></script>
     <link rel="stylesheet" type="text/css" href="bpmndi_css.css">
 </head>
 <body>
-        <div class="inner">
-        <img  src="product_logo.png">
+    <div class="inner">
+        <img src="product_logo.png">
     </div>
     <h1 style="text-align:center">BPMN DI proccessor</h1>
-        <div id="parent">
-    <form id="form_upload" action="/upload" enctype="multipart/form-data" method="post">
-    <input type="file" name="upload" id="upload" accept=".xml,.bpmn" />
-    </br>
-    </br>
-    <input type="submit" value="Process" disabled class='uploadbutton' >
+    <div id="parent">
+        <form id="uploadForm" action="/uploadForm" enctype="multipart/form-data" method="post">
+            <input type="file" name="upload" id="upload" accept=".xml,.bpmn" />
+            </br>
+            </br>
+            <input name="submit_button" type="submit" value="Process" disabled class='uploadbutton'>
     </div>
-</form>
+    </form>
+    <span id='status'></span>
 </body>
 </html>

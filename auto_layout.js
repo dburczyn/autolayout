@@ -20,22 +20,27 @@
    addDiToBPMN(req, res);
  });
  addDiToBPMN = function (req, res) {
-   log.info('starting upload');
    var uniqueFileName = uuidv1();
+   log.info('starting upload' +' : '+ uniqueFileName );
    var form = new formidable.IncomingForm();
    form.maxFileSize = 20 * 1024 * 1024;
    form.on('error', function (e) {
-     log.error(e);
-     res.status(409).send(e.message);
-     return false;
+     log.error(e  +' : '+ uniqueFileName );
+     res.status(409).send(e.message  +' : '+ uniqueFileName );
    });
    form.parse(req);
    form.on('fileBegin', function (name, file) {
-     file.path = nconf.get('bpmndi_filestorage') + '/' + 'non_layouted_bpmn_di_unprocessed_' + uniqueFileName + '.xml';
-     log.info('Uploading file to: ' + file.path);
+    if (fs.existsSync(nconf.get('bpmndi_filestorage'))) {
+      file.path = nconf.get('bpmndi_filestorage') + '/' + 'non_layouted_bpmn_di_unprocessed_' + uniqueFileName + '.xml';
+      log.info('Uploading file to: ' + file.path  +' : '+ uniqueFileName );
+    }
+    else {
+      form._error(new Error('Could not find server path: '+  nconf.get('bpmndi_filestorage')));
+   }
+
    });
    form.on('file', function (name, file) {
-     log.info('Uploaded ' + file.name);
+     log.info('Uploaded ' + file.name  +' : '+ uniqueFileName );
    });
    form.on('end', function () {
      const {
@@ -43,66 +48,79 @@
      } = require('child_process');
      const exectransform = spawn('java', ['-jar', 'saxon8.jar', '-s', nconf.get('bpmndi_filestorage') + '/non_layouted_bpmn_di_unprocessed_' + uniqueFileName + '.xml', '-o', nconf.get('bpmndi_filestorage') + '/non_layouted_bpmn_di_' + uniqueFileName + '.xml', 'exp_blueWorks.xsl']);
      exectransform.stdout.on('data', (data) => {
-       log.info(`stdout: ${data}`);
+       log.info(`stdout: ${data}`  +' : '+ uniqueFileName );
      });
      exectransform.stderr.on('data', (data) => {
-       log.debug(`stderr: ${data}`);
+       log.error(`stderr: ${data}`  +' : '+ uniqueFileName );
      });
      exectransform.on('exit', function (code) {
        if (code === 0) {
-         log.info("transform was successful");
+         log.info("transform was successful"  +' : '+ uniqueFileName );
          var AutoLayout = require('./index');
          var aRead = require('read-file');
          var sPreprocessedXMLPath = nconf.get('bpmndi_filestorage') + '/non_layouted_bpmn_di_' + uniqueFileName + '.xml';
          try {
-           log.info("openning file to layout");
+           log.info("openning file to layout"  +' : '+ uniqueFileName );
            var aXmlWithoutDi = aRead.sync(sPreprocessedXMLPath, 'utf8');
          } catch (e) {
-           log.error(e);
-           res.status(409).send("could not open transformed file");
+           log.error(e  +' : '+ uniqueFileName );
+           res.status(409).send("could not open transformed file"  +' : '+ uniqueFileName );
+           deleteUploaded(uniqueFileName);
            deletePreprocessed(uniqueFileName);
            return false;
          }
          var aAutoLayout = new AutoLayout();
          try {
-           log.info("trying to layout file");
+           log.info("trying to layout file"  +' : '+ uniqueFileName );
            aAutoLayout.layoutProcess(aXmlWithoutDi, uniqueFileName, function (result) {
-             if (result == 'error') {
-               res.status(409).send("could not layout file");
-               deletePreprocessed(uniqueFileName);
-               return false;
+            if (result.name == 'Error') {
+              log.info("layouting failed because: "+ result.message  +' : '+ uniqueFileName );
+              res.status(409).send("could not layout file because " + result.message  +' : '+ uniqueFileName );
+              deleteUploaded(uniqueFileName);
+              deletePreprocessed(uniqueFileName);
+              return false;
+           }
+              if (result == 'error') {
+                log.info("layouting failed"  +' : '+ uniqueFileName );
+                res.status(409).send("could not layout file"  +' : '+ uniqueFileName );
+                deleteUploaded(uniqueFileName);
+                deletePreprocessed(uniqueFileName);
+                return false;
              }
              if (result == true) {
-               log.info("layouting successful");
+               log.info("layouting successful"  +' : '+ uniqueFileName );
                var file = nconf.get('bpmndi_filestorage') + '/auto_layouted_bpmn_di_' + uniqueFileName + '.xml';
                res.set({
-                 'Content-Type': 'application/download'
+                 "Content-Type": "application/download"
                });
                res.download(file, function () {
-                 log.info("downloading file");
+                 log.info("downloading file"  +' : '+ uniqueFileName );
                  if (res.headersSent) {
-                   log.info("file sent to be downloaded");
+                   log.info("file sent to be downloaded"  +' : '+ uniqueFileName );
                    deleteUploaded(uniqueFileName);
                    deletePreprocessed(uniqueFileName);
                    deleteProcessed(uniqueFileName);
                  } else {
-                   log.error("could not send a file to be downloaded");
-                   res.status(409).send("could not send file to be downloaded");
+                   log.error("could not send a file to be downloaded"  +' : '+ uniqueFileName );
+                   res.status(409).send("could not send file to be downloaded"  +' : '+ uniqueFileName );
+                   deleteUploaded(uniqueFileName);
+                   deletePreprocessed(uniqueFileName);
                    deleteProcessed(uniqueFileName);
                  }
                });
              }
            });
          } catch (e) {
-           log.error(e);
-           res.status(409).send("could not process file");
+           log.error(e  +' : '+ uniqueFileName );
+           res.status(409).send("could not process file"  +' : '+ uniqueFileName );
+           deleteUploaded(uniqueFileName);
            deletePreprocessed(uniqueFileName);
            return false;
          }
        } else {
-         log.error("file transformation failed");
+         log.error("file transformation failed"  +' : '+ uniqueFileName );
          deleteUploaded(uniqueFileName);
-         res.status(409).send("could not transform file");
+         res.status(409).send("could not transform file"  +' : '+ uniqueFileName );
          return false;
        }
      });
@@ -127,9 +145,9 @@
  deleteProcessed = function (uniqueFileName) {
    try {
      fs.unlinkSync(nconf.get('bpmndi_filestorage') + '/' + 'auto_layouted_bpmn_di_' + uniqueFileName + '.xml');
-     log.info("deleted temporary processed file");
+     log.info("deleted temporary processed file"  +' : '+ uniqueFileName );
    } catch (err) {
-     log.error(err);
+     log.error(err  +' : '+ uniqueFileName );
    }
  };
  app.listen(nconf.get('bpmndi_layout_port'));

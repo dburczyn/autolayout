@@ -7,7 +7,7 @@
 <!--++++++++++++++++++++++++++++DESCRIPTION+++++++++++++++++++++++++++++++++++++++-->
 <!--																			  -->
 <!-- The main step of BPMN DI export transformation which transforms adoxx3 XML   -->
-<!--  XMLLight XML format to bpmn XML format				   		 		      -->	
+<!--  XMLLight XML format to bpmn XML format				   		 		      -->
 <!--																			  -->
 <!--++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-->
 <!--                                                                              -->
@@ -25,17 +25,17 @@
 			<xsl:apply-templates select="node()|@*"/>
 		</xsl:copy>
 	</xsl:template>
-	
+
 	<xsl:output version="1.0" encoding="utf-8"/>
 	<xsl:output method="xml" indent="no"/>
 	<xsl:template match="definitions/import"/>
 	<xsl:template match="extensionElements"/>
 	<xsl:template match="process/@id">
-		
+
 	</xsl:template>
 
 	<xsl:template match="*">
-		
+
 		<xsl:element name="bpmn:{local-name()}">
 			<xsl:choose>
 				<xsl:when test="name()= 'definitions'">
@@ -46,12 +46,12 @@
 					<xsl:attribute name="id" select="'Process_1'"/>
 				</xsl:when>
 			</xsl:choose>
-			
+
 			<xsl:apply-templates select="node()|@*">
-				
+
 			</xsl:apply-templates>
 		</xsl:element>
 	</xsl:template>
 
-	
+
 </xsl:stylesheet>

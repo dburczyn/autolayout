@@ -25,7 +25,7 @@
     "express": "^4.17.0",
     "formidable": "^1.2.1",
     "lodash": "^3.10.1",
-    "nconf": "^0.10.0",
+    "nconf": "^0.11.4",
     "read-file": "^0.2.0",
     "simple-node-logger": "^18.12.22",
     "uuid": "^3.3.2"
